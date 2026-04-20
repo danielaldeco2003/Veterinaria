@@ -21,7 +21,10 @@ function App() {
   const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // Datos base
+  const isAdmin = user?.rol === 'Administrador';
+  const isVet = user?.rol === 'Veterinario';
+  const isRecep = user?.rol === 'Recepcionista';
+
   const [duenos, setDuenos] = useState([]);
   const [mascotas, setMascotas] = useState([]);
   const [historial, setHistorial] = useState([]);
@@ -33,25 +36,23 @@ function App() {
   });
   const [reportes, setReportes] = useState({ ranking: [], clientes: [] });
 
-  // Módulo admin
   const [datosAdmin, setDatosAdmin] = useState({
-    auditoria: [],
+    auditoria_consultas: [],
+    auditoria_tratamientos: [],
+    auditoria_facturas: [],
     errores: [],
     pivot: [],
     facturas: [],
   });
 
-  // Login
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Modales
   const [showPetModal, setShowPetModal] = useState(false);
   const [showDuenoModal, setShowDuenoModal] = useState(false);
   const [showConsultaModal, setShowConsultaModal] = useState(false);
 
-  // Forms
   const [newPet, setNewPet] = useState({
     nombre: '',
     especie: '',
@@ -76,6 +77,7 @@ function App() {
     motivo: '',
     diagnostico: '',
     tratamiento: '',
+    observaciones: '',
     total: '',
     metodo_pago: 'Tarjeta',
     referencia: '',
@@ -138,52 +140,94 @@ function App() {
   const loadAllData = async (currentUser) => {
     if (!currentUser) return;
 
-    const results = await Promise.allSettled([
-      axios.get('http://127.0.0.1:8000/api/duenos/'),
-      axios.get('http://127.0.0.1:8000/api/mascotas/'),
-      axios.get(`http://127.0.0.1:8000/api/historial/${currentUser.veterinario_id}/`),
-      axios.get('http://127.0.0.1:8000/api/dashboard-stats/'),
-      axios.get('http://127.0.0.1:8000/api/reportes/'),
-      axios.get('http://127.0.0.1:8000/api/auditoria-facturas/'),
-    ]);
+    try {
+      const requests = [axios.get('http://127.0.0.1:8000/api/dashboard-stats/')];
 
-    const [
-      duenosRes,
-      mascotasRes,
-      historialRes,
-      statsRes,
-      reportesRes,
-      adminRes,
-    ] = results;
+      if (
+        currentUser.rol === 'Administrador' ||
+        currentUser.rol === 'Recepcionista' ||
+        currentUser.rol === 'Veterinario'
+      ) {
+        requests.push(axios.get('http://127.0.0.1:8000/api/mascotas/'));
+      }
 
-    if (duenosRes.status === 'fulfilled') setDuenos(duenosRes.value.data);
-    else console.error('Error cargando dueños:', duenosRes.reason);
+      if (currentUser.rol === 'Administrador' || currentUser.rol === 'Recepcionista') {
+        requests.push(axios.get('http://127.0.0.1:8000/api/duenos/'));
+        requests.push(axios.get('http://127.0.0.1:8000/api/auditoria-facturas/'));
+      }
 
-    if (mascotasRes.status === 'fulfilled') setMascotas(mascotasRes.value.data);
-    else console.error('Error cargando mascotas:', mascotasRes.reason);
+      if (currentUser.rol === 'Administrador' || currentUser.rol === 'Veterinario') {
+        requests.push(
+          axios.get(`http://127.0.0.1:8000/api/historial/${currentUser.veterinario_id}/`)
+        );
+      }
 
-    if (historialRes.status === 'fulfilled') setHistorial(historialRes.value.data);
-    else console.error('Error cargando historial:', historialRes.reason);
+      if (currentUser.rol === 'Administrador') {
+        requests.push(axios.get('http://127.0.0.1:8000/api/reportes/'));
+      }
 
-    if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
-    else console.error('Error cargando stats:', statsRes.reason);
+      const results = await Promise.allSettled(requests);
 
-    if (reportesRes.status === 'fulfilled') setReportes(reportesRes.value.data);
-    else console.error('Error cargando reportes:', reportesRes.reason);
+      setDuenos([]);
+      setMascotas([]);
+      setHistorial([]);
+      setReportes({ ranking: [], clientes: [] });
+      setDatosAdmin({
+        auditoria_consultas: [],
+        auditoria_tratamientos: [],
+        auditoria_facturas: [],
+        errores: [],
+        pivot: [],
+        facturas: [],
+      });
 
-    if (adminRes.status === 'fulfilled') setDatosAdmin(adminRes.value.data);
-    else console.error('Error cargando auditoría/facturas:', adminRes.reason);
+      for (const result of results) {
+        if (result.status !== 'fulfilled') {
+          console.error('Error cargando módulo:', result.reason);
+          continue;
+        }
+
+        const url = result.value.config.url;
+        const data = result.value.data;
+
+        if (url.includes('/api/dashboard-stats/')) {
+          setStats(data);
+        } else if (url.includes('/api/mascotas/')) {
+          setMascotas(data);
+        } else if (url.includes('/api/duenos/')) {
+          setDuenos(data);
+        } else if (url.includes('/api/historial/')) {
+          setHistorial(data);
+        } else if (url.includes('/api/reportes/')) {
+          setReportes(data);
+        } else if (url.includes('/api/auditoria-facturas/')) {
+          setDatosAdmin({
+            auditoria_consultas: data.auditoria_consultas || [],
+            auditoria_tratamientos: data.auditoria_tratamientos || [],
+            auditoria_facturas: data.auditoria_facturas || [],
+            errores: data.errores || [],
+            pivot: data.pivot || [],
+            facturas: data.facturas || [],
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error general cargando datos:', error);
+    }
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+
     try {
       const response = await axios.post('http://127.0.0.1:8000/api/login/', {
         usuario: username,
         contrasena: password,
       });
+
       setUser(response.data);
       setLoginError('');
+      setActiveTab('dashboard');
     } catch (error) {
       console.error(error);
       setLoginError('Credenciales incorrectas. Verifica tu usuario y contraseña.');
@@ -192,13 +236,32 @@ function App() {
 
   const handleAddPet = async (e) => {
     e.preventDefault();
+
+    const payload = {
+      nombre: newPet.nombre.trim(),
+      especie: newPet.especie.trim(),
+      raza: newPet.raza.trim(),
+      edad: Number(newPet.edad),
+      peso: Number(newPet.peso),
+      dueno: Number(newPet.dueno_id),
+    };
+
+    console.log('PAYLOAD MASCOTA:', payload);
+
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/mascotas/', newPet);
+      const response = await axios.post(
+        'http://127.0.0.1:8000/api/mascotas/',
+        payload
+      );
+
+      console.log('RESPUESTA OK:', response.data);
+
       setMascotas((prev) => [...prev, response.data]);
       setStats((prev) => ({
         ...prev,
         total_mascotas: Number(prev.total_mascotas || 0) + 1,
       }));
+
       setShowPetModal(false);
       setNewPet({
         nombre: '',
@@ -208,15 +271,30 @@ function App() {
         peso: '',
         dueno_id: '',
       });
+
       alert('¡Mascota registrada con éxito en la Base de Datos!');
     } catch (error) {
-      console.error(error);
-      alert('Error al registrar la mascota. Revisa los datos.');
+      console.error('ERROR COMPLETO:', error);
+      console.error('STATUS:', error.response?.status);
+      console.error('DATA:', error.response?.data);
+
+      const backendData = error.response?.data;
+
+      if (backendData?.errors) {
+        alert(`Error al registrar mascota:\n${JSON.stringify(backendData.errors, null, 2)}`);
+      } else if (backendData?.error) {
+        alert(`Error al registrar mascota:\n${backendData.error}`);
+      } else if (backendData?.message) {
+        alert(`Error al registrar mascota:\n${backendData.message}`);
+      } else {
+        alert('Error al registrar la mascota. Revisa la consola.');
+      }
     }
   };
 
   const handleAddDueno = async (e) => {
     e.preventDefault();
+
     try {
       await axios.post('http://127.0.0.1:8000/api/registrar-dueno/', newDueno);
       await loadAllData(user);
@@ -243,9 +321,18 @@ function App() {
 
     try {
       const dataToSend = {
-        ...newConsulta,
-        veterinario_id: user.veterinario_id,
+        mascota_id: Number(newConsulta.mascota_id),
+        veterinario_id: Number(user.veterinario_id),
+        motivo: newConsulta.motivo,
+        diagnostico: newConsulta.diagnostico,
+        tratamiento: newConsulta.tratamiento,
+        observaciones: newConsulta.observaciones || null,
+        total: Number(newConsulta.total),
+        metodo_pago: newConsulta.metodo_pago,
+        referencia: newConsulta.referencia || null,
       };
+
+      console.log('PAYLOAD CONSULTA:', dataToSend);
 
       await axios.post('http://127.0.0.1:8000/api/nueva-consulta/', dataToSend);
 
@@ -258,6 +345,7 @@ function App() {
         motivo: '',
         diagnostico: '',
         tratamiento: '',
+        observaciones: '',
         total: '',
         metodo_pago: 'Tarjeta',
         referencia: '',
@@ -270,7 +358,8 @@ function App() {
       );
     } catch (error) {
       console.error(error);
-      alert('Error en la transacción SQL. Revisa el endpoint, el SP o los parámetros enviados.');
+      console.error('ERROR CONSULTA DATA:', error.response?.data);
+      alert('Error en la transacción SQL. Revisa la consola para ver el detalle.');
     }
   };
 
@@ -289,6 +378,7 @@ function App() {
           <div className="flex justify-center mb-6 text-brandTeal">
             <Dog size={48} />
           </div>
+
           <h2 className="text-2xl font-bold text-center text-slate-800 mb-6">
             Acceso a Clínica
           </h2>
@@ -357,51 +447,61 @@ function App() {
             <LayoutDashboard size={20} /> Dashboard
           </button>
 
-          <button
-            onClick={() => setActiveTab('mascotas')}
-            className={navItemClass('mascotas', 'w-full text-left')}
-          >
-            <Dog size={20} /> Mascotas
-          </button>
+          {(isAdmin || isRecep) && (
+            <>
+              <button
+                onClick={() => setActiveTab('mascotas')}
+                className={navItemClass('mascotas', 'w-full text-left')}
+              >
+                <Dog size={20} /> Mascotas
+              </button>
 
-          <button
-            onClick={() => setActiveTab('citas')}
-            className={navItemClass('citas', 'w-full text-left')}
-          >
-            <Calendar size={20} /> Historial Médico
-          </button>
+              <button
+                onClick={() => setActiveTab('duenos')}
+                className={navItemClass('duenos', 'w-full text-left')}
+              >
+                <Users size={20} /> Dueños
+              </button>
 
-          <button
-            onClick={() => setActiveTab('duenos')}
-            className={navItemClass('duenos', 'w-full text-left')}
-          >
-            <Users size={20} /> Dueños
-          </button>
+              <button
+                onClick={() => setActiveTab('facturas')}
+                className={navItemClass('facturas', 'w-full text-left')}
+              >
+                <Receipt size={20} /> Facturación
+              </button>
+            </>
+          )}
 
-          <button
-            onClick={() => setActiveTab('facturas')}
-            className={navItemClass('facturas', 'w-full text-left')}
-          >
-            <Receipt size={20} /> Facturación
-          </button>
+          {(isAdmin || isVet) && (
+            <button
+              onClick={() => setActiveTab('citas')}
+              className={navItemClass('citas', 'w-full text-left')}
+            >
+              <Calendar size={20} /> Historial Médico
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('reportes')}
-            className={navItemClass('reportes', 'w-full text-left')}
-          >
-            <BarChart3 size={20} /> Reportes SQL
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => setActiveTab('reportes')}
+                className={navItemClass('reportes', 'w-full text-left')}
+              >
+                <BarChart3 size={20} /> Reportes SQL
+              </button>
 
-          <div className="mt-8 mb-2 px-6 text-xs text-teal-200 font-bold uppercase tracking-wider">
-            Módulo Admin (Profe)
-          </div>
+              <div className="mt-8 mb-2 px-6 text-xs text-teal-200 font-bold uppercase tracking-wider">
+                Módulo Admin
+              </div>
 
-          <button
-            onClick={() => setActiveTab('auditoria')}
-            className={navItemClass('auditoria', 'w-full text-left text-amber-200')}
-          >
-            <ShieldAlert size={20} /> Logs y Triggers
-          </button>
+              <button
+                onClick={() => setActiveTab('auditoria')}
+                className={navItemClass('auditoria', 'w-full text-left text-amber-200')}
+              >
+                <ShieldAlert size={20} /> Logs y Triggers
+              </button>
+            </>
+          )}
         </nav>
       </aside>
 
@@ -422,12 +522,14 @@ function App() {
               <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden shadow-inner">
                 <img
                   src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.nombre_completo}`}
-                  alt="Doctor"
+                  alt="Usuario"
                 />
               </div>
               <div className="text-sm">
                 <p className="font-bold text-slate-700 text-base">{user.nombre_completo}</p>
-                <p className="text-slate-500">{user.especialidad}</p>
+                <p className="text-slate-500">
+                  {user.rol} {user.especialidad ? `• ${user.especialidad}` : ''}
+                </p>
               </div>
             </div>
 
@@ -500,9 +602,7 @@ function App() {
                                 <span className="font-bold text-slate-700">
                                   {cita.mascota_nombre}
                                 </span>
-                                <span className="text-slate-500 text-xs">
-                                  {cita.motivo}
-                                </span>
+                                <span className="text-slate-500 text-xs">{cita.motivo}</span>
                               </div>
                             </li>
                           );
@@ -569,12 +669,14 @@ function App() {
                                 <Activity size={16} /> Expediente Clínico
                               </p>
                               <p className="text-sm text-slate-700">
-                                <strong>Diagnóstico:</strong>{' '}
-                                {expedienteDestacado.diagnostico}
+                                <strong>Diagnóstico:</strong> {expedienteDestacado.diagnostico}
                               </p>
                               <p className="text-sm text-slate-700">
-                                <strong>Tratamiento:</strong>{' '}
-                                {expedienteDestacado.tratamiento}
+                                <strong>Tratamiento:</strong> {expedienteDestacado.tratamiento}
+                              </p>
+                              <p className="text-sm text-slate-700">
+                                <strong>Observaciones:</strong>{' '}
+                                {expedienteDestacado.observaciones || 'Sin observaciones'}
                               </p>
                             </div>
                           )}
@@ -591,7 +693,7 @@ function App() {
             </>
           )}
 
-          {activeTab === 'duenos' && (
+          {activeTab === 'duenos' && (isAdmin || isRecep) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-xl text-slate-800">Directorio de Dueños</h3>
@@ -619,9 +721,7 @@ function App() {
                     {duenos.map((dueno) => (
                       <tr key={dueno.dueno_id} className="border-b hover:bg-slate-50">
                         <td className="p-3 font-semibold text-slate-700">#{dueno.dueno_id}</td>
-                        <td className="p-3 font-bold text-brandTeal">
-                          {dueno.nombre_completo}
-                        </td>
+                        <td className="p-3 font-bold text-brandTeal">{dueno.nombre_completo}</td>
                         <td className="p-3 text-slate-600">{dueno.email}</td>
                         <td className="p-3 text-slate-600">{dueno.telefono}</td>
                         <td className="p-3 text-slate-500 text-sm">{dueno.direccion}</td>
@@ -636,7 +736,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'mascotas' && (
+          {activeTab === 'mascotas' && (isAdmin || isRecep) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-xl text-slate-800">Registro de Mascotas</h3>
@@ -651,7 +751,7 @@ function App() {
               <div className="grid grid-cols-3 gap-6">
                 {mascotas.map((mascota) => {
                   const dueno = duenos.find(
-                    (d) => Number(d.dueno_id) === Number(mascota.dueno_id)
+                    (d) => Number(d.dueno_id) === Number(mascota.dueno)
                   );
 
                   return (
@@ -686,12 +786,10 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'citas' && (
+          {activeTab === 'citas' && (isAdmin || isVet) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-xl text-slate-800">
-                  Historial Médico
-                </h3>
+                <h3 className="font-bold text-xl text-slate-800">Historial Médico</h3>
                 <button
                   onClick={() => setShowConsultaModal(true)}
                   className="bg-[#f97316] text-white px-4 py-2 rounded shadow hover:bg-orange-600 transition-colors flex items-center gap-2"
@@ -755,7 +853,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'facturas' && (
+          {activeTab === 'facturas' && (isAdmin || isRecep) && (
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h3 className="font-bold text-xl text-slate-800 mb-4">Historial de Facturación</h3>
 
@@ -763,6 +861,7 @@ function App() {
                 <thead>
                   <tr className="border-b-2 border-slate-200 text-slate-500 bg-slate-50">
                     <th className="p-3">ID Factura</th>
+                    <th className="p-3">Folio</th>
                     <th className="p-3">Fecha</th>
                     <th className="p-3">Motivo Consulta</th>
                     <th className="p-3">Método de Pago</th>
@@ -773,6 +872,7 @@ function App() {
                   {datosAdmin.facturas.map((fac, idx) => (
                     <tr key={idx} className="border-b hover:bg-slate-50">
                       <td className="p-3 font-semibold text-slate-700">#{fac.factura_id}</td>
+                      <td className="p-3 text-slate-600">{fac.folio || 'N/A'}</td>
                       <td className="p-3 text-slate-600">{fac.fecha}</td>
                       <td className="p-3 text-slate-600 italic">{fac.motivo}</td>
                       <td className="p-3">
@@ -786,7 +886,7 @@ function App() {
 
                   {datosAdmin.facturas.length === 0 && (
                     <tr>
-                      <td colSpan="5" className="p-4 text-center text-slate-500">
+                      <td colSpan="6" className="p-4 text-center text-slate-500">
                         No hay facturas registradas.
                       </td>
                     </tr>
@@ -796,7 +896,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'reportes' && (
+          {activeTab === 'reportes' && isAdmin && (
             <div className="grid grid-cols-2 gap-6">
               <div className="col-span-2 bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
                 <h3 className="font-bold text-lg text-slate-800 mb-2">
@@ -912,7 +1012,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'auditoria' && (
+          {activeTab === 'auditoria' && isAdmin && (
             <div className="space-y-6">
               <div className="bg-red-50 border border-red-200 rounded-xl p-6">
                 <h3 className="font-bold text-xl text-red-800 mb-2 flex items-center gap-2">
@@ -953,12 +1053,8 @@ function App() {
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
                 <h3 className="font-bold text-xl text-amber-800 mb-2 flex items-center gap-2">
-                  <Activity /> Auditoría Automática (TRIGGERS)
+                  <Activity /> Auditoría de Consultas
                 </h3>
-                <p className="text-sm text-amber-700 mb-4">
-                  Registros generados automáticamente por el{' '}
-                  <code>TRIGGER trg_Audit_Consultas</code>.
-                </p>
 
                 <table className="w-full text-left text-sm border bg-white">
                   <thead className="bg-amber-100 text-amber-800">
@@ -970,7 +1066,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {datosAdmin.auditoria.map((aud, i) => (
+                    {datosAdmin.auditoria_consultas.map((aud, i) => (
                       <tr key={i} className="border-b">
                         <td className="p-2 font-bold">#{aud.consulta_id}</td>
                         <td className="p-2">
@@ -979,18 +1075,96 @@ function App() {
                           </span>
                         </td>
                         <td className="p-2">
-                          {aud.estado_anterior} ➡️{' '}
+                          {aud.estado_anterior || 'N/A'} ➡️{' '}
                           <span className="text-emerald-600 font-bold">
-                            {aud.estado_nuevo}
+                            {aud.estado_nuevo || 'N/A'}
                           </span>
                         </td>
                         <td className="p-2 font-mono text-xs">{aud.usuario_bd}</td>
                       </tr>
                     ))}
-                    {datosAdmin.auditoria.length === 0 && (
+                    {datosAdmin.auditoria_consultas.length === 0 && (
                       <tr>
                         <td colSpan="4" className="p-4 text-center text-slate-500">
-                          No hay auditorías registradas aún.
+                          No hay auditorías de consultas registradas aún.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                <h3 className="font-bold text-xl text-blue-800 mb-2 flex items-center gap-2">
+                  <Activity /> Auditoría de Tratamientos
+                </h3>
+
+                <table className="w-full text-left text-sm border bg-white">
+                  <thead className="bg-blue-100 text-blue-800">
+                    <tr>
+                      <th className="p-2">ID Tratamiento</th>
+                      <th className="p-2">ID Consulta</th>
+                      <th className="p-2">Acción</th>
+                      <th className="p-2">Usuario BD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosAdmin.auditoria_tratamientos.map((aud, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="p-2 font-bold">#{aud.tratamiento_id}</td>
+                        <td className="p-2">#{aud.consulta_id}</td>
+                        <td className="p-2">
+                          <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold text-xs">
+                            {aud.accion}
+                          </span>
+                        </td>
+                        <td className="p-2 font-mono text-xs">{aud.usuario_bd}</td>
+                      </tr>
+                    ))}
+                    {datosAdmin.auditoria_tratamientos.length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="p-4 text-center text-slate-500">
+                          No hay auditorías de tratamientos registradas aún.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6">
+                <h3 className="font-bold text-xl text-emerald-800 mb-2 flex items-center gap-2">
+                  <Receipt /> Auditoría de Facturas
+                </h3>
+
+                <table className="w-full text-left text-sm border bg-white">
+                  <thead className="bg-emerald-100 text-emerald-800">
+                    <tr>
+                      <th className="p-2">ID Factura</th>
+                      <th className="p-2">ID Consulta</th>
+                      <th className="p-2">Acción</th>
+                      <th className="p-2">Total</th>
+                      <th className="p-2">Usuario BD</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datosAdmin.auditoria_facturas.map((aud, i) => (
+                      <tr key={i} className="border-b">
+                        <td className="p-2 font-bold">#{aud.factura_id}</td>
+                        <td className="p-2">#{aud.consulta_id}</td>
+                        <td className="p-2">
+                          <span className="bg-emerald-100 text-emerald-800 px-2 py-1 rounded font-bold text-xs">
+                            {aud.accion}
+                          </span>
+                        </td>
+                        <td className="p-2">{aud.total_registrado ?? aud.total_nuevo ?? 'N/A'}</td>
+                        <td className="p-2 font-mono text-xs">{aud.usuario_bd}</td>
+                      </tr>
+                    ))}
+                    {datosAdmin.auditoria_facturas.length === 0 && (
+                      <tr>
+                        <td colSpan="5" className="p-4 text-center text-slate-500">
+                          No hay auditorías de facturas registradas aún.
                         </td>
                       </tr>
                     )}
@@ -1000,7 +1174,7 @@ function App() {
             </div>
           )}
 
-          {showPetModal && (
+          {showPetModal && (isAdmin || isRecep) && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl shadow-2xl p-6 w-[400px]">
                 <div className="flex justify-between items-center mb-4">
@@ -1130,7 +1304,7 @@ function App() {
             </div>
           )}
 
-          {showDuenoModal && (
+          {showDuenoModal && (isAdmin || isRecep) && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl shadow-2xl p-6 w-[400px]">
                 <div className="flex justify-between items-center mb-4">
@@ -1231,7 +1405,7 @@ function App() {
             </div>
           )}
 
-          {showConsultaModal && (
+          {showConsultaModal && (isAdmin || isVet) && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl shadow-2xl p-6 w-[520px] max-h-[90vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
@@ -1308,6 +1482,15 @@ function App() {
                       value={newConsulta.tratamiento}
                       onChange={(e) =>
                         setNewConsulta({ ...newConsulta, tratamiento: e.target.value })
+                      }
+                      className="w-full border rounded p-2 h-20 resize-none"
+                    />
+
+                    <textarea
+                      placeholder="Observaciones (opcional)"
+                      value={newConsulta.observaciones}
+                      onChange={(e) =>
+                        setNewConsulta({ ...newConsulta, observaciones: e.target.value })
                       }
                       className="w-full border rounded p-2 h-20 resize-none"
                     />
