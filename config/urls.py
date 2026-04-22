@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """
 URL configuration for config project.
 
@@ -20,3 +21,12 @@ from django.urls import path
 urlpatterns = [
     path('admin/', admin.site.urls),
 ]
+=======
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/', include('api.urls')), # Aquí enganchamos tu API
+]
+>>>>>>> ae6bd0908a320ee23f71eecdf0a44412b36b6627

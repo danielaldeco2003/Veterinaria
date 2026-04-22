@@ -37,9 +37,19 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+<<<<<<< HEAD
 ]
 
 MIDDLEWARE = [
+=======
+    'rest_framework',
+    'corsheaders',
+    'api',
+]
+
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+>>>>>>> ae6bd0908a320ee23f71eecdf0a44412b36b6627
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -74,8 +84,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
+<<<<<<< HEAD
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+=======
+        'ENGINE': 'mssql',
+        'NAME': 'ClinicaVeterinaria', 
+        'HOST': 'LAPTOP-4CRCP62I', 
+        'USER': '',
+        'PASSWORD': '',
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server', 
+            # Agregamos Trusted_Connection=yes para que pase con tu Autenticación de Windows
+            'extra_params': 'Trusted_Connection=yes;TrustServerCertificate=yes;',
+        },
+>>>>>>> ae6bd0908a320ee23f71eecdf0a44412b36b6627
     }
 }
 
@@ -115,3 +138,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+<<<<<<< HEAD
+=======
+
+CORS_ALLOW_ALL_ORIGINS = True
+>>>>>>> ae6bd0908a320ee23f71eecdf0a44412b36b6627
